@@ -1,0 +1,25 @@
+{
+  "name": "cc-collab",
+  "version": "1.0.0",
+  "description": "Are you getting better at working with Claude Code? Weekly efficiency trends: commits per CC hour.",
+  "type": "module",
+  "bin": {
+    "cc-collab": "cli.mjs"
+  },
+  "scripts": {
+    "start": "node cli.mjs"
+  },
+  "keywords": [
+    "claude-code",
+    "ai",
+    "productivity",
+    "git",
+    "analytics",
+    "efficiency"
+  ],
+  "author": "yurukusa",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}
