@@ -62,7 +62,7 @@ Sessions >8 hours are excluded (likely autonomous background runs).
 
 ## Part of cc-toolkit
 
-One of [32 free tools](https://yurukusa.github.io/cc-toolkit/) for understanding your Claude Code usage.
+One of [33 free tools](https://yurukusa.github.io/cc-toolkit/) for understanding your Claude Code usage.
 
 ## License
 
