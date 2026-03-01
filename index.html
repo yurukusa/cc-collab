@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>cc-collab — Weekly collaboration efficiency</title>
+  <meta name="description" content="Paste your cc-collab --json output and visualize your weekly Claude Code collaboration efficiency.">
+  <meta property="og:title" content="cc-collab — Weekly collaboration efficiency">
+  <meta property="og:description" content="See your commits-per-hour trend, peak week, and efficiency trajectory. Part of cc-toolkit.">
+  <meta property="og:url" content="https://yurukusa.github.io/cc-collab/">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="cc-collab — How efficient is your Claude Code workflow?">
+  <meta name="twitter:description" content="Paste your --json output to visualize weekly efficiency and share your trend.">
+  <meta name="twitter:site" content="@yurukusa_dev">
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --green: #56d364;
+      --red: #f85149;
+      --cyan: #58d8f0;
+      --orange: #ffa657;
+      --purple: #bc8cff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; min-height: 100vh; }
+    .container { max-width: 800px; margin: 0 auto; padding: 40px 20px; }
+
+    header { text-align: center; margin-bottom: 40px; }
+    header h1 { font-size: 2.2rem; font-weight: 800; color: var(--cyan); margin-bottom: 8px; }
+    header p { color: var(--muted); font-size: 1rem; }
+
+    .cmd-box { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; margin-bottom: 32px; font-family: monospace; font-size: 0.9rem; }
+    .cmd-box .comment { color: var(--muted); }
+    .cmd-box .cmd { color: var(--green); margin: 4px 0; }
+
+    /* Drop zone */
+    .paste-section { margin-bottom: 24px; }
+    .paste-section label { display: block; color: var(--muted); font-size: 0.82rem; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 8px; }
+    .drop-zone {
+      position: relative;
+      border: 2px dashed var(--border);
+      border-radius: 10px;
+      transition: border-color 0.2s;
+    }
+    .drop-zone.drag-over { border-color: var(--cyan); }
+    textarea {
+      width: 100%; height: 160px;
+      background: transparent; color: var(--text);
+      border: none; border-radius: 10px;
+      padding: 14px; font-family: monospace; font-size: 0.82rem;
+      resize: vertical; outline: none;
+    }
+    textarea::placeholder { color: var(--muted); }
+    .drop-hint {
+      position: absolute; bottom: 10px; right: 14px;
+      font-size: 0.72rem; color: var(--muted); pointer-events: none;
+    }
+
+    .btn {
+      background: var(--cyan); color: #000; font-weight: 700;
+      border: none; border-radius: 8px; padding: 10px 24px;
+      font-size: 0.9rem; cursor: pointer; width: 100%;
+      transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn-secondary {
+      background: var(--surface); color: var(--text); border: 1px solid var(--border);
+      font-weight: 600; border-radius: 8px; padding: 9px 20px;
+      font-size: 0.85rem; cursor: pointer; transition: border-color 0.2s;
+    }
+    .btn-secondary:hover { border-color: var(--cyan); }
+
+    .error { color: var(--red); font-size: 0.85rem; margin-top: 8px; }
+
+    /* Card */
+    #card { display: none; }
+    .collab-card {
+      background: linear-gradient(135deg, #0d1117 0%, #111820 100%);
+      border: 1px solid var(--cyan); border-radius: 16px;
+      padding: 32px; margin-bottom: 24px;
+      box-shadow: 0 0 40px rgba(88,216,240,0.07);
+    }
+    .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 28px; flex-wrap: wrap; gap: 12px; }
+    .card-title { font-size: 1.1rem; font-weight: 700; color: var(--cyan); }
+    .card-sub { font-size: 0.8rem; color: var(--muted); margin-top: 3px; }
+    .card-badge {
+      border-radius: 6px; padding: 4px 10px;
+      font-size: 0.75rem; font-weight: 600;
+    }
+    .badge-declining { background: rgba(248,81,73,0.12); border: 1px solid rgba(248,81,73,0.35); color: var(--red); }
+    .badge-improving { background: rgba(86,211,100,0.12); border: 1px solid rgba(86,211,100,0.35); color: var(--green); }
+    .badge-plateauing { background: rgba(255,166,87,0.12); border: 1px solid rgba(255,166,87,0.35); color: var(--orange); }
+
+    .big-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
+    @media (max-width: 560px) { .big-stats { grid-template-columns: 1fr 1fr; } }
+    .big-stat { text-align: center; }
+    .big-num { font-size: 1.9rem; font-weight: 800; color: var(--cyan); line-height: 1; }
+    .big-num.green { color: var(--green); }
+    .big-num.orange { color: var(--orange); }
+    .big-num.purple { color: var(--purple); }
+    .big-label { font-size: 0.72rem; color: var(--muted); margin-top: 4px; }
+
+    .section-title { font-size: 0.72rem; font-weight: 600; color: var(--muted); letter-spacing: 0.5px; margin-bottom: 14px; }
+
+    /* Weekly bar chart */
+    .chart-wrap { margin-bottom: 28px; }
+    .week-row {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 10px;
+    }
+    .week-label {
+      font-family: monospace; font-size: 0.76rem; color: var(--muted);
+      min-width: 72px; white-space: nowrap;
+    }
+    .week-bar-bg {
+      flex: 1; background: var(--border); border-radius: 4px;
+      height: 20px; overflow: hidden; position: relative;
+    }
+    .week-bar-fill {
+      height: 100%; border-radius: 4px;
+      display: flex; align-items: center; padding-left: 6px;
+      transition: width 0.6s ease;
+      min-width: 0;
+    }
+    .week-bar-fill.peak { background: linear-gradient(90deg, var(--cyan), var(--purple)); }
+    .week-bar-fill.normal { background: var(--cyan); opacity: 0.55; }
+    .week-bar-fill.zero { background: var(--border); opacity: 0.4; width: 100% !important; }
+    .week-val {
+      font-family: monospace; font-size: 0.75rem;
+      color: var(--muted); min-width: 80px; text-align: right;
+    }
+    .peak-star {
+      font-size: 0.7rem; color: var(--cyan); font-weight: 700;
+      white-space: nowrap;
+    }
+
+    /* Trend section */
+    .trend-box {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 16px 20px;
+      display: flex; align-items: center; gap: 16px;
+      margin-bottom: 20px;
+    }
+    .trend-arrow { font-size: 2rem; line-height: 1; }
+    .trend-arrow.improving { color: var(--green); }
+    .trend-arrow.declining { color: var(--red); }
+    .trend-arrow.plateauing { color: var(--orange); }
+    .trend-text { flex: 1; }
+    .trend-label { font-size: 0.95rem; font-weight: 700; }
+    .trend-label.improving { color: var(--green); }
+    .trend-label.declining { color: var(--red); }
+    .trend-label.plateauing { color: var(--orange); }
+    .trend-desc { font-size: 0.8rem; color: var(--muted); margin-top: 3px; }
+    .trend-pct { font-size: 1.4rem; font-weight: 800; text-align: right; }
+    .trend-pct.improving { color: var(--green); }
+    .trend-pct.declining { color: var(--red); }
+    .trend-pct.plateauing { color: var(--orange); }
+
+    .card-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 20px; border-top: 1px solid var(--border); padding-top: 16px; flex-wrap: wrap; gap: 8px; }
+    .card-source { font-size: 0.72rem; color: var(--muted); }
+    .card-source a { color: var(--muted); text-decoration: none; }
+    .card-source a:hover { color: var(--cyan); }
+
+    .share-row { display: flex; gap: 10px; flex-wrap: wrap; }
+
+    .demo-link { text-align: center; margin-top: 20px; }
+    .demo-link a { color: var(--muted); font-size: 0.82rem; text-decoration: none; }
+    .demo-link a:hover { color: var(--cyan); }
+
+    /* Zero-hour note */
+    .zero-note {
+      font-size: 0.72rem; color: var(--muted);
+      font-style: italic; margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>cc-collab</h1>
+    <p>Weekly Claude Code collaboration efficiency</p>
+  </header>
+
+  <div class="cmd-box">
+    <div class="comment"># Run this in your terminal, then paste the output below</div>
+    <div class="cmd">npx cc-collab --json</div>
+    <div style="margin-top:10px;color:var(--muted);font-size:0.8rem;">Or: <span style="color:var(--text)">npx cc-collab --weeks=4 --json</span> &nbsp;·&nbsp; <span style="color:var(--text)">npx cc-collab --weeks=12 --json</span></div>
+  </div>
+
+  <div class="paste-section">
+    <label>▸ PASTE JSON OUTPUT HERE — or drop a .json file</label>
+    <div class="drop-zone" id="dropZone">
+      <textarea id="jsonInput" placeholder='{"version":"1.0.0","weeks":8,"summary":{"totalHours":23.2,"totalCommits":729,...},"weeklyData":[...]}'></textarea>
+      <div class="drop-hint">drag &amp; drop .json</div>
+    </div>
+    <div id="errMsg" class="error"></div>
+  </div>
+
+  <button class="btn" onclick="renderCard()">Visualize my efficiency →</button>
+
+  <div class="demo-link">
+    <a href="#" onclick="loadDemo(); return false;">▸ Load demo data (actual stats)</a>
+  </div>
+
+  <!-- Card output -->
+  <div id="card" style="margin-top:40px;">
+    <div class="collab-card" id="collabCard">
+      <div class="card-header">
+        <div>
+          <div class="card-title">cc-collab</div>
+          <div class="card-sub" id="cardSub">8 weeks · efficiency trend</div>
+        </div>
+        <div class="card-badge" id="trendBadge">—</div>
+      </div>
+
+      <div class="big-stats">
+        <div class="big-stat">
+          <div class="big-num" id="statCommits">—</div>
+          <div class="big-label">total commits</div>
+        </div>
+        <div class="big-stat">
+          <div class="big-num green" id="statHours">—</div>
+          <div class="big-label">active hours</div>
+        </div>
+        <div class="big-stat">
+          <div class="big-num orange" id="statEfficiency">—</div>
+          <div class="big-label">avg efficiency</div>
+        </div>
+        <div class="big-stat">
+          <div class="big-num purple" id="statPeak">—</div>
+          <div class="big-label">peak efficiency</div>
+        </div>
+      </div>
+
+      <div class="section-title">▸ WEEKLY EFFICIENCY (commits/hour)</div>
+      <div class="chart-wrap" id="weekChart"></div>
+
+      <div class="trend-box" id="trendBox">
+        <div class="trend-arrow" id="trendArrow">→</div>
+        <div class="trend-text">
+          <div class="trend-label" id="trendLabel">—</div>
+          <div class="trend-desc" id="trendDesc">Comparing recent weeks to earlier weeks</div>
+        </div>
+        <div class="trend-pct" id="trendPct">—</div>
+      </div>
+
+      <div class="card-footer">
+        <div class="card-source">
+          <a href="https://yurukusa.github.io/cc-toolkit/" target="_blank">cc-toolkit</a>
+          · 31 free tools for Claude Code
+        </div>
+      </div>
+    </div>
+
+    <div class="share-row">
+      <button class="btn-secondary" onclick="shareTwitter()">Share on X (Twitter)</button>
+      <button class="btn-secondary" onclick="copyUrl()">Copy share URL</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const DEMO = {
+  "version": "1.0.0",
+  "generatedAt": "2026-03-01T00:00:00.000Z",
+  "weeks": 8,
+  "summary": {
+    "totalHours": 23.3,
+    "totalCommits": 729,
+    "totalNetLines": 490123,
+    "avgEfficiency": 31.4,
+    "trend": "declining",
+    "trendPct": -28,
+    "peakWeek": "2026-02-16",
+    "peakEfficiency": 349.0
+  },
+  "weeklyData": [
+    {"weekStart": "2026-01-12", "hours": 0.0, "commits": 32, "netLines": 0, "efficiency": 0.0, "linesPerHour": 0},
+    {"weekStart": "2026-01-19", "hours": 0.0, "commits": 43, "netLines": 0, "efficiency": 0.0, "linesPerHour": 0},
+    {"weekStart": "2026-01-26", "hours": 0.0, "commits": 23, "netLines": 0, "efficiency": 0.0, "linesPerHour": 0},
+    {"weekStart": "2026-02-02", "hours": 0.0, "commits": 94, "netLines": 0, "efficiency": 0.0, "linesPerHour": 0},
+    {"weekStart": "2026-02-09", "hours": 1.0, "commits": 28, "netLines": 0, "efficiency": 28.3, "linesPerHour": 0},
+    {"weekStart": "2026-02-16", "hours": 0.2, "commits": 73, "netLines": 0, "efficiency": 349.0, "linesPerHour": 0},
+    {"weekStart": "2026-02-23", "hours": 17.3, "commits": 367, "netLines": 490123, "efficiency": 21.3, "linesPerHour": 28318},
+    {"weekStart": "2026-03-02", "hours": 4.8, "commits": 69, "netLines": 69000, "efficiency": 14.5, "linesPerHour": 14375}
+  ]
+};
+
+function fmtDate(iso) {
+  // "2026-01-12" -> "Jan 12"
+  const d = new Date(iso + 'T00:00:00Z');
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
+function fmtNum(n) {
+  if (Math.abs(n) >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+  if (Math.abs(n) >= 1000) return (n / 1000).toFixed(0) + 'k';
+  return String(n);
+}
+
+function loadDemo() {
+  document.getElementById('jsonInput').value = JSON.stringify(DEMO, null, 2);
+  renderCard();
+}
+
+function renderCard() {
+  const raw = document.getElementById('jsonInput').value.trim();
+  const err = document.getElementById('errMsg');
+  err.textContent = '';
+
+  let data;
+  try { data = JSON.parse(raw); } catch (e) {
+    err.textContent = '✗ Invalid JSON. Make sure to copy the full output of: npx cc-collab --json';
+    return;
+  }
+  if (!data.summary || !data.weeklyData) {
+    err.textContent = '✗ Unexpected format. Run: npx cc-collab --json and paste the full output.';
+    return;
+  }
+
+  const { summary, weeklyData } = data;
+  const weeks = data.weeks || weeklyData.length;
+
+  // Header
+  document.getElementById('cardSub').textContent = `${weeks} weeks · efficiency trend`;
+
+  // Big numbers
+  document.getElementById('statCommits').textContent = summary.totalCommits.toLocaleString();
+  document.getElementById('statHours').textContent = summary.totalHours.toFixed(1) + 'h';
+  document.getElementById('statEfficiency').textContent = summary.avgEfficiency.toFixed(1);
+  document.getElementById('statPeak').textContent = summary.peakEfficiency.toFixed(0);
+
+  // Trend badge
+  const trend = (summary.trend || 'plateauing').toLowerCase();
+  const trendArrow = trend === 'improving' ? '↑' : trend === 'declining' ? '↓' : '→';
+  const trendEmoji = trend === 'improving' ? 'Improving' : trend === 'declining' ? 'Declining' : 'Plateauing';
+  const trendClass = trend === 'improving' ? 'improving' : trend === 'declining' ? 'declining' : 'plateauing';
+  const badgeClass = 'badge-' + trendClass;
+
+  const badge = document.getElementById('trendBadge');
+  badge.textContent = trendArrow + ' ' + trendEmoji;
+  badge.className = 'card-badge ' + badgeClass;
+
+  // Week chart — efficiency bars
+  // Weeks with hours=0 are treated as "no session data" (show as gray bar with commit count)
+  const maxEfficiency = Math.max(...weeklyData.map(w => w.efficiency), 1);
+  const peakWk = summary.peakWeek;
+
+  const chart = document.getElementById('weekChart');
+  chart.innerHTML = weeklyData.map(w => {
+    const isPeak = w.weekStart === peakWk;
+    const hasHours = w.hours > 0;
+    const effWidth = hasHours ? Math.max(Math.ceil(w.efficiency / maxEfficiency * 100), 2) : 0;
+    const fillClass = !hasHours ? 'zero' : isPeak ? 'peak' : 'normal';
+    const label = hasHours
+      ? w.efficiency.toFixed(1) + ' c/h'
+      : w.commits + ' commits (no session)';
+
+    // For zero-hour weeks: show a thin bar representing commits volume instead
+    const zeroWidth = hasHours ? 0 : Math.max(Math.ceil(w.commits / Math.max(...weeklyData.map(x => x.commits), 1) * 40), 4);
+
+    return `
+      <div class="week-row">
+        <div class="week-label">${fmtDate(w.weekStart)}</div>
+        <div class="week-bar-bg">
+          ${hasHours
+            ? `<div class="week-bar-fill ${fillClass}" style="width:${effWidth}%"></div>`
+            : `<div class="week-bar-fill zero" style="width:${zeroWidth}%; opacity:0.25;"></div>`
+          }
+        </div>
+        <div class="week-val">
+          ${hasHours ? w.efficiency.toFixed(1) + ' c/h' : '— c/h'}
+          ${isPeak ? '<span class="peak-star">◆ peak</span>' : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Trend box
+  const trendPct = summary.trendPct || 0;
+  const trendSign = trendPct >= 0 ? '+' : '';
+
+  document.getElementById('trendArrow').textContent = trendArrow;
+  document.getElementById('trendArrow').className = 'trend-arrow ' + trendClass;
+  document.getElementById('trendLabel').textContent = trendEmoji;
+  document.getElementById('trendLabel').className = 'trend-label ' + trendClass;
+  document.getElementById('trendDesc').textContent =
+    trend === 'improving'
+      ? 'Recent weeks are more efficient than earlier ones'
+      : trend === 'declining'
+      ? 'Recent weeks are less efficient than earlier ones'
+      : 'Efficiency is holding steady across weeks';
+  document.getElementById('trendPct').textContent = trendSign + trendPct + '%';
+  document.getElementById('trendPct').className = 'trend-pct ' + trendClass;
+
+  // Show card
+  document.getElementById('card').style.display = 'block';
+
+  // URL hash for sharing
+  window.location.hash = btoa(JSON.stringify(data));
+}
+
+function shareTwitter() {
+  const raw = document.getElementById('jsonInput').value.trim();
+  let data;
+  try { data = JSON.parse(raw); } catch { return; }
+  const { summary } = data;
+  const trendArrow = summary.trend === 'improving' ? '↑' : summary.trend === 'declining' ? '↓' : '→';
+  const text = `My Claude Code collaboration efficiency (${data.weeks} weeks):\n` +
+    `⚡ ${summary.avgEfficiency.toFixed(1)} commits/hour avg\n` +
+    `🏆 Peak: ${summary.peakEfficiency.toFixed(0)} commits/hour\n` +
+    `📦 ${summary.totalCommits.toLocaleString()} commits · ${summary.totalHours.toFixed(1)}h active\n` +
+    `${trendArrow} Trend: ${summary.trend}\n\ncc-collab via @yurukusa_dev`;
+  const url = `https://x.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent('https://yurukusa.github.io/cc-collab/')}`;
+  window.open(url, '_blank');
+}
+
+function copyUrl() {
+  const url = window.location.href;
+  navigator.clipboard.writeText(url).then(() => {
+    const btn = event.target;
+    const orig = btn.textContent;
+    btn.textContent = '✓ Copied!';
+    setTimeout(() => btn.textContent = orig, 2000);
+  });
+}
+
+// Drag-and-drop support
+const dropZone = document.getElementById('dropZone');
+dropZone.addEventListener('dragover', e => {
+  e.preventDefault();
+  dropZone.classList.add('drag-over');
+});
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (!file || !file.name.endsWith('.json')) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    document.getElementById('jsonInput').value = ev.target.result;
+    renderCard();
+  };
+  reader.readAsText(file);
+});
+
+// Load from hash on page load
+window.addEventListener('load', () => {
+  const hash = window.location.hash.slice(1);
+  if (!hash) return;
+  try {
+    const data = JSON.parse(atob(hash));
+    document.getElementById('jsonInput').value = JSON.stringify(data, null, 2);
+    renderCard();
+  } catch (e) { /* invalid hash, ignore */ }
+});
+</script>
+</body>
+</html>
